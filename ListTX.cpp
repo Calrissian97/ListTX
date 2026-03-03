@@ -7,6 +7,9 @@
 #include <string>
 #include <unordered_set>
 #include <filesystem>
+#ifndef _WIN32
+#include <cstring>
+#endif
 
 using namespace std;
 
