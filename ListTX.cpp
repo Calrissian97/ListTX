@@ -9,6 +9,7 @@
 #include <filesystem>
 #ifndef _WIN32
 #include <cstring>
+#include <algorithm>
 #endif
 
 using namespace std;
