@@ -10,7 +10,7 @@ ListTX.exe [options] <files_or_directories>
 Simply drag and drop files or containing directories onto the application to scan them for required textures, or open the application and enter an absolute path.
 ## Requirements
 ### Windows Binaries
-C++ runtime is bundled, no redists necessary for Windows 7+. 
+C++17 is bundled, no redists necessary for Windows 7+. 
 ### Linux Binaries
 glibc ≥ 2.39
 Should currently work for Ubuntu 24.04+, Fedora 40+, Arch Linux, Debian Testing/Unstable. 
