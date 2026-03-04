@@ -10,6 +10,6 @@ ListTX.exe [options] <files_or_directories>
 Simply drag and drop files or containing directories onto the application to scan them for required textures, or open the application and enter an absolute path.
 ## Requirements
 ### Windows Binaries
-[Latest supported Microsoft Visual C++ Redistributables v14 (for Visual Studio 2017–2026)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)
+UCRT is bundled via msvc v142, no redists should be necessary for Windows 7+.
 ### Linux Binaries
 glibc ≥ 2.39, should currently work for Ubuntu 24.04+, Fedora 40+, Arch Linux, Debian Testing/Unstable.
