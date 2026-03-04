@@ -1,21 +1,22 @@
 // ListTX - Reads MSH files and outputs required textures.
 // Landon Hull aka Calrissian97
 // 03/02/26
+// Windows Dependencies: Microsoft Visual C++ 2015–2022 Redist
+// Linux Dependencies: glibc >= 2.39
 
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
 #include <unordered_set>
 #include <filesystem>
-#ifndef _WIN32
 #include <cstring>
 #include <algorithm>
-#endif
 
 using namespace std;
 
 // Outputs usage when a hero is needed.
-void printUsage(const char* programName)
+static void printUsage(const char* programName)
 {
     cout << " Usage: " << filesystem::path(programName).filename().string() << " [options] <files_or_directories>...\n\n"
          << " Options:\n"
@@ -25,127 +26,168 @@ void printUsage(const char* programName)
 }
 
 // Reads MSH binary for MATL chunk and child TXyD chunks and returns unordered set of string texture names.
-unordered_set<string> processMshFile(const filesystem::path& path)
+static void processMshFile(const filesystem::path& path, unordered_set<string>& textures)
 {
-    // List of textures used by all materials in this MSH file.
-    unordered_set<string> mshTextures;
-
     // Open file as binary.
     ifstream file(path, ios::binary);
     if (!file.is_open())
     {
         // Output error and problem file.
-        cerr << " Error: Unable to open file: " << path.string() << endl;
-        return mshTextures;
+        cerr << " Error: Unable to open file: " << path.string() << '\n';
+        return;
     }
     
     // Skip first 16 bytes (At least HEDR and MSH2 chunks are guaranteed).
     file.seekg(16);
 
-    // 4-byte chunk to read.
+    // 4-byte chunk to read from file.
     char chunk[4];
-    // Position of MATL.
-    int matlPosition = 0;
+
+    // Whether the MATL chunk was found.
+    bool matlFound = false;
 
     // Iterate in 4 byte chunks until "MATL" is located.
     while (file.read(chunk, 4))
     {
+        // Compare read chunk to "MATL".
         if (memcmp(chunk, "MATL", 4) == 0)
         {
-            // Record starting position of MATL to verify MATL was found.
-            matlPosition = static_cast<int>(file.tellg()) - 4;
+            // Flag as found, stop reading.
+            matlFound = true;
             break;
         }
     }
 
     // Output error if MATL not found.
-    if (matlPosition == 0)
+    if (!matlFound)
     {
-        cerr << " Error: MATL chunk not found in file: " << path.string() << endl;
+        cerr << " Error: MATL chunk not found in file: " << path.string() << '\n';
         file.close();
-        return mshTextures;
+        return;
     }
 
     // Skip 4 bytes (MATL size).
     file.seekg(4, ios::cur);
 
     // Read count of MATD chunks.
-    uint32_t matdCount = 0;
+    uint_fast32_t matdCount = 0;
     file.read(reinterpret_cast<char*>(&matdCount), 4);
+    const uint_fast8_t MAX_MATERIALS = 255;
 
-    // Read each MATD chunk
-    for (uint_fast8_t matd = 0; matd < matdCount; ++matd)
+    // Defensive check for too many materials/invalid read.
+    if (matdCount > MAX_MATERIALS)
     {
-        // Read next header.
-        file.read(chunk, 4);
+        cerr << " Error: Too many MATD chunks in file: " << path.string() << '\n';
+        file.close();
+        return;
+    }
 
-        // Output error if next header isn't MATD.
-        if (memcmp(chunk, "MATD", 4) != 0)
-        {
-            cerr << " Error: Child MATD chunk not found in file: " << path.string() << endl;
-            file.close();
-            return mshTextures;
-        }
+    // Read each MATD chunk.
+    for (uint_fast32_t matd = 0; matd < matdCount; ++matd)
+    {
+        // Skip 4 bytes (MATD header).
+        file.seekg(4, ios::cur);
 
         // Read MATD size.
-        uint32_t matdSize = 0;
+        uint_fast32_t matdSize = 0;
         file.read(reinterpret_cast<char*>(&matdSize), 4);
+        const uint_fast16_t MAX_MATD_SIZE = 2048;
 
-        // Record MATD chunk end.
-        uint_fast32_t matdEnd = static_cast<int>(file.tellg()) + matdSize;
+        // Defensive check for invalid read.
+        if (matdSize > MAX_MATD_SIZE)
+        {
+            cerr << " Error: Invalid MATD size in file: " << path.string() << '\n';
+            file.close();
+            return;
+        }
+
+        // Get current position in MATD chunk.
+        streamoff matdEnd = file.tellg();
+
+        // Defensive check that streampos was valid.
+        if (matdEnd < 0)
+        {
+            cerr << " Error: Invalid stream position in file: " << path.string() << '\n';
+            file.close();
+            return;
+        }
+
+        // Record end position of MATD chunk.
+        matdEnd += matdSize;
 
         // Skip NAME header.
         file.seekg(4, ios::cur);
 
         // Read NAME size.
-        uint32_t nameSize = 0;
+        uint_fast32_t nameSize = 0;
         file.read(reinterpret_cast<char*>(&nameSize), 4);
+        const uint16_t MAX_NAME_SIZE = 256;
+
+        // Defensive check for invalid read.
+        if (nameSize > MAX_NAME_SIZE)
+        {
+            cerr << " Error: Invalid NAME chunk size in file: " << path.string() << '\n';
+            file.close();
+            return;
+        }
         
         // Skip MATD->NAME, DATA, and ATRB chunks (size is always fixed at 60 for DATA, 12 for ATRB).
         file.seekg(nameSize + 72, ios::cur);
 
         // Read TXyD chunks until MATD chunk end Max 4 (TX0D, TX1D, TX2D, TX3D), min 0.
-        while (static_cast<uint_fast32_t>(file.tellg()) < matdEnd)
+        while (true)
         {
+            // Defensive check that stream position was valid.
+            std::streamoff pos = file.tellg();
+            if (pos < 0 || pos >= matdEnd)
+               {
+                    break;
+               }
+
             // Skip chunk header (TXyD).
             file.seekg(4, ios::cur);
 
-            // Read chunk size (also texture name size).
+            // Read chunk size (texture name size).
             uint32_t chunkSize = 0;
             file.read(reinterpret_cast<char*>(&chunkSize), 4);
+
+            // Defensive check for invalid read.
+            if (chunkSize > MAX_NAME_SIZE)
+            {
+                cerr << " Error: Invalid NAME chunk size in file: " << path.string() << '\n';
+                file.close();
+                return;
+            }
 
             // Read texture name.
             string textureName;
             textureName.resize(chunkSize);
             file.read(&textureName[0], chunkSize);
 
+            // Skip empty texture names (materials without an assigned texture).
             if (textureName.empty() || textureName == ".tga" || textureName[0] == '\0')
             {
-                // Skip empty texture names (materials without a texture).
                 continue;
 			}
 
-            // Insert texture name into mshTextures.
-            mshTextures.insert(textureName);
+            // Insert texture name into textures.
+            textures.insert(textureName);
         }
     }
 
-    // Explicitly close file to be safe.
     file.close();
-
-    // Return textures listed in this MSH.
-    return mshTextures;
+    return;
 }
 
 // Takes args and outputs textures requried from the MSH(s).
 int main(int argc, char* argv[])
 {
     // If no arguments given, prompt user for action.
-    static string inputPath;
+    string inputPath;
     if (argc < 2)
     {
         // Prompt user for input path.
-        cout << " Enter a path to a .msh file or a containing directory: ";
+        cout << " Enter a path to a .msh file or a containing directory: " << flush;
         getline(cin, inputPath);
 
         // Strip quotes from input path.
@@ -166,7 +208,7 @@ int main(int argc, char* argv[])
         if (lowerInput == "help" || inputPath.empty())
         {
             printUsage(argv[0]);
-            cout << "\n Press Enter to exit...";
+            cout << " Press Enter to exit..." << flush;
             cin.get();
             return 0;
         }
@@ -177,7 +219,7 @@ int main(int argc, char* argv[])
     {
         string lowerArg = argv[i];
         transform(lowerArg.begin(), lowerArg.end(), lowerArg.begin(), ::tolower);
-        if (lowerArg == "-h" || lowerArg == "/h" || lowerArg == "--help" || lowerArg == "help")
+        if (lowerArg == "-h" || lowerArg == "/h" || lowerArg == "--help" || lowerArg == "/help" || lowerArg == "help")
         {
             // If asking for help, provide it.
             printUsage(argv[0]);
@@ -185,8 +227,8 @@ int main(int argc, char* argv[])
         }
     }
 
-    // Static set of all textures listed in all input MSH files.
-    static unordered_set<string> allTextures;
+    // unordered_set of all textures listed in all input MSH files.
+    unordered_set<string> allTextures;
 
     // Process input paths.
     int pathCount = (argc < 2) ? 1 : argc - 1;
@@ -201,7 +243,8 @@ int main(int argc, char* argv[])
         // Check path validity.
         if (!filesystem::exists(path))
         {
-            cerr << " Error: Path does not exist: " << argv[i] << endl;
+            cerr << " Error: Path does not exist: " << path.string() << '\n';
+            printUsage(argv[0]);
             continue;
         }
         
@@ -212,8 +255,7 @@ int main(int argc, char* argv[])
             {
                 if (entry.is_regular_file() && entry.path().extension() == ".msh")
                 {
-                    unordered_set<string> mshTextures = processMshFile(entry.path());
-                    allTextures.insert(mshTextures.begin(), mshTextures.end());
+                    processMshFile(entry.path(), allTextures);
                 }
             }
         }
@@ -223,28 +265,25 @@ int main(int argc, char* argv[])
         {
             if (path.extension() == ".msh")
             {
-                    unordered_set<string> mshTextures = processMshFile(path);
-                    allTextures.insert(mshTextures.begin(), mshTextures.end());
+                processMshFile(path, allTextures);
             }
         }
     }
 
+    // Sort texture names alphabetically into a vector.
+    vector<string> sortedTextures(allTextures.begin(), allTextures.end());
+    sort(sortedTextures.begin(), sortedTextures.end());
+
     // Output all listed textures from all input MSH files.
-    cout << "\n -- Required Textures --" << endl;
-    for (const string texture : allTextures)
-    {
-        // Skip empty strings (materials without a texture).
-        if (texture.empty() || texture.length() == 0)
-            continue;
-            
+    cout << "\n -- Required Textures --\n";
+    for (const auto& texture : sortedTextures)
+    {       
         // Print texture name.
-        cout << " " << texture << endl;
+        cout << " " << texture << '\n';
     }
 
     // Keep terminal open until user input.
-    cout << "\n Press Enter to exit...";
+    cout << "\n Press Enter to exit..." << flush;
     cin.get();
-
-    // Return 0 on exit
     return 0;
 }
