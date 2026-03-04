@@ -12,5 +12,4 @@ Simply drag and drop files or containing directories onto the application to sca
 ### Windows Binaries
 [Latest supported Microsoft Visual C++ Redistributables v14 (for Visual Studio 2017–2026)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)
 ### Linux Binaries
-glibc ≥ 2.39
-Should currently work for Ubuntu 24.04+, Fedora 40+, Arch Linux, Debian Testing/Unstable. 
+glibc ≥ 2.39, should currently work for Ubuntu 24.04+, Fedora 40+, Arch Linux, Debian Testing/Unstable.
