@@ -126,8 +126,9 @@ static void processSkyFile(const filesystem::path &path, unordered_set<string> &
     }
 
     // Token flags that indicate a texture is required.
-    const string textureIndicators[5] = {
-        "texture(\"", "startexture(\"", "envtexture(\"", "detailtexture(\"", "terrainbumpdetail(\""
+    const string textureIndicators[7] = {
+        "texture(\"", "startexture(\"", "envtexture(\"", "detailtexture(\"", "terrainbumpdetail(\"",
+        "terrainbumptexture(\"", "terrainbumpspeculartexture(\""
     };
 
     // Read file line by line to EOF.
