@@ -370,8 +370,8 @@ static void processFxFile(const filesystem::path &path, unordered_set<string> &t
     }
 
     // Token flags that indicate a texture is required.
-    const string textureIndicators[5] = {
-        "texture(\"", "maintexture(\"", "normalmaptextures(\"", "bumpmaptextures(\"", "specularmasktextures(\""
+    const string textureIndicators[6] = {
+        "texture(\"",  "bumpmap(\"", "maintexture(\"", "normalmaptextures(\"", "bumpmaptextures(\"", "specularmasktextures(\""
     };
 
     // Read file line by line until EOF.
